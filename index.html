@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progetto M40 mod. 65 - Automatic Ready Rack Simulator</title>
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Military Style Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Teko:wght@400;600;700&display=swap');
+        
+        body {
+            font-family: 'Share Tech Mono', monospace;
+            background-color: #0b0f12;
+            color: #d1d5db;
+            user-select: none;
+        }
+
+        .font-teko {
+            font-family: 'Teko', sans-serif;
+        }
+
+        /* Glassmorphism & Hud styling */
+        .hud-panel {
+            background: linear-gradient(135deg, rgba(20, 26, 31, 0.95), rgba(13, 17, 20, 0.98));
+            border: 1px solid rgba(75, 85, 99, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+        }
+
+        .shell-slot {
+            transition: all 0.2s ease-in-out;
+        }
+
+        .shell-slot.ready {
+            background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+            border-color: #7dd3fc;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+        }
+
+        .shell-slot.loading {
+            background: rgba(234, 179, 8, 0.15);
+            border-color: #eab308;
+            animation: pulse-border 1.5s infinite;
+        }
+
+        .shell-slot.batch-lockout {
+            background: rgba(220, 38, 38, 0.15);
+            border-color: #ef4444;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+            animation: pulse-red-border 1.2s infinite;
+        }
+
+        .shell-slot.empty {
+            background: rgba(31, 41, 55, 0.4);
+            border-color: rgba(75, 85, 99, 0.3);
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(234, 179, 8, 0.4); }
+            50% { border-color: rgba(234, 179, 8, 1); }
+            100% { border-color: rgba(234, 179, 8, 0.4); }
+        }
+
+        @keyframes pulse-red-border {
+            0% { border-color: rgba(239, 68, 68, 0.4); }
+            50% { border-color: rgba(239, 68, 68, 1); }
+            100% { border-color: rgba(239, 68, 68, 0.4); }
+        }
+
+        /* Custom Progress Bars */
+        .progress-bar-fill {
+            transition: width 0.05s linear;
+        }
+
+        /* Tactical Button Styling */
+        .btn-fire {
+            background: linear-gradient(180deg, #ea580c 0%, #c2410c 100%);
+            border: 2px solid #fdba74;
+            box-shadow: 0 0 15px rgba(234, 88, 12, 0.4);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .btn-fire:hover:not(:disabled) {
+            background: linear-gradient(180deg, #f97316 0%, #ea580c 100%);
+            box-shadow: 0 0 25px rgba(249, 115, 22, 0.7);
+            transform: translateY(-1px);
+        }
+
+        .btn-fire:active:not(:disabled) {
+            transform: translateY(1px);
+            box-shadow: 0 0 10px rgba(234, 88, 12, 0.4);
+        }
+
+        .btn-fire:disabled {
+            background: linear-gradient(180deg, #374151 0%, #1f2937 100%);
+            border-color: #4b5563;
+            box-shadow: none;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Custom Scrollbar for Logs */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(75, 85, 99, 0.6);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(107, 114, 128, 0.8);
+        }
+    </style>
+</head>
+<body class="min-h-screen p-3 md:p-6 flex flex-col justify-between">
+
+    <!-- MAIN CONTAINER -->
+    <div class="max-w-5xl mx-auto w-full space-y-4">
+        
+        <!-- HEADER / TANK STATS OVERVIEW -->
+        <header class="hud-panel p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 border-l-4 border-l-amber-500">
+            <div>
+                <div class="flex items-center space-x-3">
+                    <h1 class="text-2xl md:text-3xl font-teko font-bold tracking-wider text-amber-500 uppercase">
+                        Progetto M40 mod. 65
+                    </h1>
+                    <span class="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs rounded border border-amber-500/30 font-bold">
+                        TIER X • MECHANICS TEST
+                    </span>
+                </div>
+                <p class="text-xs text-gray-400">Automatic Ready Rack Simulator (8-shell magazine with shot penalty &amp; recovery lockout mechanics)</p>
+            </div>
+
+            <!-- QUICK CONTROLS -->
+            <div class="flex items-center space-x-3">
+                <button id="resetBtn" onclick="resetSimulator()" class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-600 rounded text-xs tracking-wider uppercase transition flex items-center gap-2">
+                    <i class="fa-solid fa-rotate"></i> Reset Battle
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            
+            <!-- LEFT & CENTER: READY RACK & ACTION PANEL (2 COLS) -->
+            <div class="lg:col-span-2 space-y-4">
+                
+                <!-- READY RACK VISUALIZER -->
+                <div class="hud-panel p-5 rounded-xl space-y-4">
+                    <div class="flex justify-between items-center border-b border-gray-700/60 pb-2">
+                        <span class="text-sm font-bold uppercase tracking-widest text-gray-300 flex items-center gap-2">
+                            <i class="fa-solid fa-layer-group text-amber-500"></i> Automatic Ready Rack (8 Shells)
+                        </span>
+                        <span id="shellCountText" class="text-lg font-teko font-bold text-sky-400 tracking-wider">
+                            0 / 8 READY
+                        </span>
+                    </div>
+
+                    <!-- 8 SHELL SLOTS GRID -->
+                    <div id="shellGrid" class="grid grid-cols-4 md:grid-cols-8 gap-2">
+                        <!-- Slots rendered dynamically -->
+                    </div>
+
+                    <!-- REFILL & PENALTY INFORMATION BAR -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 text-xs">
+                        <div class="bg-gray-900/60 p-2.5 rounded border border-gray-800 flex items-center justify-between">
+                            <span class="text-gray-400">Base Shell Reload:</span>
+                            <span class="font-mono font-bold text-amber-400">8.00 s</span>
+                        </div>
+                        <div class="bg-gray-900/60 p-2.5 rounded border border-gray-800 flex items-center justify-between">
+                            <span class="text-gray-400">Shot Penalty System:</span>
+                            <span class="font-mono font-bold text-orange-400">+25% / +100% / +200% + 100% Carryover</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MAIN CONTROLS & TIMERS PANEL -->
+                <div id="statusPanel" class="hud-panel p-5 rounded-xl space-y-5">
+                    
+                    <!-- FIRE BUTTON SECTION -->
+                    <div class="text-center space-y-2">
+                        <button id="fireBtn" onclick="fireShot()" disabled class="btn-fire w-full py-4 rounded-lg font-teko text-3xl font-bold tracking-widest uppercase text-white transition-all duration-150 flex items-center justify-center gap-3">
+                            <i class="fa-solid fa-crosshairs"></i> FIRE (390 DMG)
+                        </button>
+                        <div id="fireBlockedReason" class="text-xs font-bold text-red-400 h-4">
+                            <!-- Dynamic reason why fire is disabled -->
+                        </div>
+                    </div>
+
+                    <!-- TIMERS SECTION -->
+                    <div class="space-y-3">
+                        
+                        <!-- 1. INTRA-CLIP COOLDOWN -->
+                        <div>
+                            <div class="flex justify-between text-xs mb-1">
+                                <span class="text-gray-400 uppercase font-semibold">
+                                    <i class="fa-solid fa-bolt text-yellow-500 mr-1"></i> Intra-Clip Cooldown (5.5s)
+                                </span>
+                                <span id="intraClipTime" class="font-mono font-bold text-yellow-400">0.00s</span>
+                            </div>
+                            <div class="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden border border-gray-700">
+                                <div id="intraClipBar" class="bg-yellow-500 h-2.5 rounded-full progress-bar-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- 2. CURRENT SHELL RELOAD TIMER -->
+                        <div>
+                            <div class="flex justify-between items-center text-xs mb-1">
+                                <span class="text-gray-400 uppercase font-semibold">
+                                    <i class="fa-solid fa-spinner text-sky-400 mr-1"></i> Reloading Shell <span id="loadingShellIndex" class="text-sky-300">#1</span>
+                                </span>
+                                <span id="activeReloadTime" class="font-mono font-bold text-sky-400">0.00s / 8.00s</span>
+                            </div>
+
+                            <!-- DEDICATED PENALTY STATUS BADGE -->
+                            <div id="penaltyStatusBox" class="my-2 p-2.5 rounded-lg border bg-gray-900/90 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                <span class="text-gray-400 font-semibold flex items-center gap-1.5">
+                                    <i class="fa-solid fa-gauge-high text-amber-400"></i> Current Shot Penalty:
+                                </span>
+                                <span id="penaltyStatusBadge" class="px-2.5 py-1 rounded-md text-xs font-bold tracking-wide uppercase">
+                                    NO PENALTY (0%)
+                                </span>
+                            </div>
+
+                            <div class="w-full bg-gray-800 rounded-full h-3 overflow-hidden border border-gray-700 relative">
+                                <div id="activeReloadBar" class="bg-sky-500 h-3 rounded-full progress-bar-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- 3. LOCKOUT TIMER (CONDITIONAL) -->
+                        <div id="lockoutContainer" class="p-3 rounded-lg bg-red-950/40 border border-red-800/60 hidden space-y-1.5">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-red-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                    <i class="fa-solid fa-lock text-red-500 animate-pulse"></i> 3-SHELL BATCH RECOVERY LOCKOUT (24.0s)
+                                </span>
+                                <span id="lockoutTime" class="font-mono font-bold text-red-300">24.0s</span>
+                            </div>
+                            <div class="w-full bg-gray-900 rounded-full h-2.5 overflow-hidden border border-red-900">
+                                <div id="lockoutBar" class="bg-red-600 h-2.5 rounded-full progress-bar-fill" style="width: 100%"></div>
+                            </div>
+                            <p class="text-[11px] text-red-300/80 italic">
+                                Ready rack reloading 3 initial shells simultaneously. When complete, 3 shells will be ready at once.
+                            </p>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT COL: BATTLE STATS & ACTION LOG -->
+            <div class="space-y-4">
+                
+                <!-- BATTLE TELEMETRY / STATS -->
+                <div class="hud-panel p-5 rounded-xl space-y-4">
+                    <h2 class="text-sm font-bold uppercase tracking-widest text-gray-300 border-b border-gray-700/60 pb-2 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-emerald-400"></i> Battle Telemetry
+                    </h2>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-gray-900/80 p-3 rounded-lg border border-gray-800">
+                            <div class="text-[11px] text-gray-400 uppercase">Battle Time</div>
+                            <div id="battleTime" class="text-2xl font-teko font-bold text-gray-100">00:00.0</div>
+                        </div>
+                        <div class="bg-gray-900/80 p-3 rounded-lg border border-gray-800">
+                            <div class="text-[11px] text-gray-400 uppercase">Shots Fired</div>
+                            <div id="totalShots" class="text-2xl font-teko font-bold text-amber-400">0</div>
+                        </div>
+                        <div class="bg-gray-900/80 p-3 rounded-lg border border-gray-800">
+                            <div class="text-[11px] text-gray-400 uppercase">Damage Dealt</div>
+                            <div id="totalDamage" class="text-2xl font-teko font-bold text-emerald-400">0</div>
+                        </div>
+                        <div class="bg-gray-900/80 p-3 rounded-lg border border-gray-800">
+                            <div class="text-[11px] text-gray-400 uppercase">Effective DPM</div>
+                            <div id="currentDPM" class="text-2xl font-teko font-bold text-sky-400">0</div>
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-900/50 p-3 rounded-lg border border-gray-800 text-xs space-y-1">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Shots during reload:</span>
+                            <span id="shotsWhileReloading" class="font-mono font-bold text-orange-400">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Added Penalty Time:</span>
+                            <span id="totalPenaltyTime" class="font-mono font-bold text-orange-400">0.00 s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMBAT LOG -->
+                <div class="hud-panel p-4 rounded-xl space-y-2">
+                    <div class="flex justify-between items-center border-b border-gray-700/60 pb-2">
+                        <span class="text-xs font-bold uppercase tracking-widest text-gray-300 flex items-center gap-1.5">
+                            <i class="fa-solid fa-list-ul text-gray-400"></i> Combat Log
+                        </span>
+                        <button onclick="clearLogs()" class="text-[10px] text-gray-400 hover:text-gray-200 underline">Clear</button>
+                    </div>
+                    <div id="combatLog" class="h-48 overflow-y-auto space-y-1.5 text-[11px] font-mono pr-1">
+                        <!-- Logs dynamically populated -->
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        // --- CONSTANTS ---
+        const MAX_SHELLS = 8;
+        const BASE_RELOAD_TIME = 8.0; // seconds per shell
+        const INTRA_CLIP_DELAY = 5.5;  // seconds between shots
+        const LOCKOUT_TIME = 24.0;    // 3 x 8.0s
+        const PENALTY_SHOT_1 = 2.0;   // +25% of 8.0s (+2.0s -> 10.0s)
+        const PENALTY_SHOT_2 = 8.0;   // +100% of 8.0s (+8.0s -> 16.0s)
+        const PENALTY_SHOT_3 = 16.0;  // +200% of 8.0s (+16.0s -> 24.0s)
+        const ALPHA_DAMAGE = 390;
+
+        // --- GAME STATE ---
+        let state = {
+            readyShells: 0,
+            activeReloadTimer: 0,
+            currentRequiredReload: BASE_RELOAD_TIME,
+            intraClipTimer: 0,
+            isLockedOut: true, // Starts in lockout on match start
+            lockoutTimer: LOCKOUT_TIME,
+            currentShellPenaltiesCount: 0,
+            carryOverPenalty: false,
+            
+            // Stats
+            battleTime: 0,
+            totalShots: 0,
+            totalDamage: 0,
+            shotsWhileReloadingCount: 0,
+            totalPenaltyTimeAdded: 0,
+            
+            // Loop controls
+            isRunning: true
+        };
+
+        let lastTimestamp = null;
+
+        // --- MINIMALIST SHELL SVG BUILDER ---
+        function createShellSvg(colorClass = "fill-current") {
+            return `
+            <svg class="w-4 h-8 ${colorClass}" viewBox="0 0 24 50">
+                <!-- Sharp Projectile Tip & Ogive -->
+                <path d="M12 0 C16 10 18 18 18 30 L18 42 L6 42 L6 30 C6 18 8 10 12 0 Z" />
+                <!-- Driving Band / Rim -->
+                <rect x="5" y="42" width="14" height="3" rx="0.5" />
+                <!-- Casing Base -->
+                <rect x="6" y="45" width="12" height="5" rx="0.5" />
+            </svg>`;
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            renderShellGrid();
+            addLog("Battle started. Ready rack recovery lockout active (24.0s).", "lock");
+            requestAnimationFrame(gameLoop);
+        };
+
+        // --- MAIN SIMULATION LOOP ---
+        function gameLoop(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const delta = (timestamp - lastTimestamp) / 1000; // in seconds
+            lastTimestamp = timestamp;
+
+            if (state.isRunning && delta < 0.5) { // Protect against large tab-switch deltas
+                updateSimulation(delta);
+            }
+
+            renderUI();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- CORE MECHANICS LOGIC ---
+        function updateSimulation(delta) {
+            // Update Battle Clock
+            state.battleTime += delta;
+
+            // 1. UPDATE INTRA-CLIP COOLDOWN
+            if (state.intraClipTimer > 0) {
+                state.intraClipTimer = Math.max(0, state.intraClipTimer - delta);
+            }
+
+            // 2. UPDATE BATCH LOCKOUT STATE (3 Shells Recovery)
+            if (state.isLockedOut) {
+                state.lockoutTimer -= delta;
+                if (state.lockoutTimer <= 0) {
+                    // Lockout ended -> Grant 3 instant shells, start loading 4th normally
+                    state.isLockedOut = false;
+                    state.lockoutTimer = 0;
+                    state.readyShells = 3;
+                    state.activeReloadTimer = 0;
+                    state.currentRequiredReload = BASE_RELOAD_TIME;
+                    state.currentShellPenaltiesCount = 0;
+                    addLog("Recovery Lockout ended! 3 shells restored to ready rack. Loading shell #4.", "success");
+                }
+                return; // During lockout, normal single reloads do not progress
+            }
+
+            // 3. UPDATE ACTIVE SHELL RELOAD (if not fully loaded at 10 shells)
+            if (state.readyShells < MAX_SHELLS) {
+                state.activeReloadTimer += delta;
+
+                // Check if current shell completed loading
+                if (state.activeReloadTimer >= state.currentRequiredReload) {
+                    state.readyShells++;
+                    addLog(`Shell #${state.readyShells} loaded.`, "reload");
+                    
+                    // Reset timer for next shell if still under max
+                    state.activeReloadTimer = 0;
+                    if (state.carryOverPenalty && state.readyShells < MAX_SHELLS) {
+                        state.currentShellPenaltiesCount = 2;
+                        state.currentRequiredReload = BASE_RELOAD_TIME + PENALTY_SHOT_2;
+                        state.totalPenaltyTimeAdded += PENALTY_SHOT_2;
+                        state.carryOverPenalty = false;
+                        addLog(`Carryover Penalty Applied! Shell #${state.readyShells + 1} starts automatically with +100% penalty (+8.0s).`, "lock");
+                    } else {
+                        state.currentRequiredReload = BASE_RELOAD_TIME;
+                        state.currentShellPenaltiesCount = 0;
+                    }
+                }
+            }
+        }
+
+        // --- FIRE MECHANIC ---
+        function fireShot() {
+            // Validation
+            if (state.isLockedOut || state.readyShells <= 0 || state.intraClipTimer > 0) {
+                return;
+            }
+
+            const wasFull = state.readyShells === MAX_SHELLS;
+
+            // Execute Shot
+            state.readyShells--;
+            state.totalShots++;
+            state.totalDamage += ALPHA_DAMAGE;
+            state.intraClipTimer = INTRA_CLIP_DELAY;
+
+            // If tank was full (10) and fires, check if carryover penalty was pending
+            if (wasFull && state.carryOverPenalty && state.readyShells < MAX_SHELLS) {
+                state.currentShellPenaltiesCount = 2;
+                state.currentRequiredReload = BASE_RELOAD_TIME + PENALTY_SHOT_2;
+                state.totalPenaltyTimeAdded += PENALTY_SHOT_2;
+                state.carryOverPenalty = false;
+                addLog(`Carryover Penalty Applied! Shell #${state.readyShells + 1} starts automatically with +100% penalty (+8.0s).`, "lock");
+            }
+
+            // SHOT PENALTY CHECK: If currently reloading a shell (i.e. readyShells < 10)
+            let penaltyText = "";
+            if (state.readyShells < MAX_SHELLS) {
+                if (state.currentShellPenaltiesCount < 3) {
+                    state.currentShellPenaltiesCount++;
+                    state.shotsWhileReloadingCount++;
+                    
+                    if (state.currentShellPenaltiesCount === 1) {
+                        state.currentRequiredReload = BASE_RELOAD_TIME + PENALTY_SHOT_1;
+                        state.totalPenaltyTimeAdded += PENALTY_SHOT_1;
+                        penaltyText = ` (Shot Penalty [1x]: +25% / +2.0s to shell #${state.readyShells + 1})`;
+                    } else if (state.currentShellPenaltiesCount === 2) {
+                        const additionalPenalty = PENALTY_SHOT_2 - PENALTY_SHOT_1; // +6.0s
+                        state.currentRequiredReload = BASE_RELOAD_TIME + PENALTY_SHOT_2;
+                        state.totalPenaltyTimeAdded += additionalPenalty;
+                        penaltyText = ` (Shot Penalty [2x]: +100% / +8.0s to shell #${state.readyShells + 1})`;
+                    } else if (state.currentShellPenaltiesCount === 3) {
+                        const additionalPenalty = PENALTY_SHOT_3 - PENALTY_SHOT_2; // +8.0s
+                        state.currentRequiredReload = BASE_RELOAD_TIME + PENALTY_SHOT_3;
+                        state.totalPenaltyTimeAdded += additionalPenalty;
+                        state.carryOverPenalty = true;
+                        penaltyText = ` (MAX Shot Penalty [3x]: +200% / +16.0s to shell #${state.readyShells + 1} -> +100% CARRYOVER triggered for next shell!)`;
+                    }
+                }
+            }
+
+            addLog(`FIRE! Dealt ${ALPHA_DAMAGE} DMG. Shells remaining: ${state.readyShells}.${penaltyText}`, "shot");
+
+            // DEPLETION LOCKOUT TRIGGER: Check if empty (readyShells dropped to 0)
+            if (state.readyShells === 0) {
+                triggerBatchLockout();
+            }
+        }
+
+        function triggerBatchLockout() {
+            state.isLockedOut = true;
+            state.lockoutTimer = LOCKOUT_TIME;
+            state.activeReloadTimer = 0;
+            state.currentRequiredReload = BASE_RELOAD_TIME;
+            state.currentShellPenaltiesCount = 0;
+            state.carryOverPenalty = false;
+            addLog("Magazine depleted! 3-shell batch recovery lockout activated (24.0s).", "lock");
+        }
+
+        // --- UI RENDERER ---
+        function renderShellGrid() {
+            const grid = document.getElementById('shellGrid');
+            grid.innerHTML = '';
+
+            for (let i = 1; i <= MAX_SHELLS; i++) {
+                const slot = document.createElement('div');
+                slot.id = `shell-slot-${i}`;
+                slot.className = `shell-slot flex flex-col items-center justify-center p-2 rounded-lg border h-20 font-teko text-xl font-bold transition-all relative overflow-hidden`;
+                
+                grid.appendChild(slot);
+            }
+        }
+
+        function renderUI() {
+            const lockoutElapsed = LOCKOUT_TIME - state.lockoutTimer;
+            const lockoutProgressPct = Math.min(100, Math.max(0, (lockoutElapsed / LOCKOUT_TIME) * 100));
+
+            // 1. Update Ready Rack Shell States
+            for (let i = 1; i <= MAX_SHELLS; i++) {
+                const slot = document.getElementById(`shell-slot-${i}`);
+                if (!slot) continue;
+
+                if (state.isLockedOut && i <= 3) {
+                    // VISUAL LOCKOUT: Shells 1, 2, 3 load simultaneously
+                    slot.className = "shell-slot batch-lockout flex flex-col items-center justify-center p-2 rounded-lg border h-20 text-red-400 font-teko relative overflow-hidden";
+                    slot.innerHTML = `
+                        <span class="absolute top-1 right-1 bg-red-800 text-red-200 text-[8px] px-1 rounded font-bold uppercase tracking-wider">BATCH</span>
+                        <div class="mb-1 text-red-400 opacity-90">${createShellSvg("fill-red-400 animate-pulse")}</div>
+                        <span class="text-[11px] font-sans font-bold text-red-300 relative z-10">${state.lockoutTimer.toFixed(1)}s</span>
+                        <div class="absolute bottom-0 left-0 h-1 bg-red-500 transition-all duration-75" style="width: ${lockoutProgressPct}%"></div>
+                    `;
+                } else if (i <= state.readyShells) {
+                    // Ready Shell
+                    slot.className = "shell-slot ready flex flex-col items-center justify-center p-2 rounded-lg border h-20 text-white font-teko relative";
+                    slot.innerHTML = `
+                        <div class="mb-1 text-sky-100">${createShellSvg("fill-white drop-shadow")}</div>
+                        <span class="text-xs font-sans tracking-tight opacity-90">#${i}</span>
+                    `;
+                } else if (i === state.readyShells + 1 && !state.isLockedOut) {
+                    // Currently Loading Shell
+                    let penaltyBadgeHtml = '';
+                    if (state.currentShellPenaltiesCount === 1) {
+                        penaltyBadgeHtml = `<span class="absolute top-1 right-1 bg-amber-500 text-black text-[9px] px-1 rounded font-bold shadow">+25%</span>`;
+                    } else if (state.currentShellPenaltiesCount === 2) {
+                        penaltyBadgeHtml = `<span class="absolute top-1 right-1 bg-orange-600 text-white text-[9px] px-1 rounded font-bold shadow">+100%</span>`;
+                    } else if (state.currentShellPenaltiesCount >= 3) {
+                        penaltyBadgeHtml = `<span class="absolute top-1 right-1 bg-red-600 text-white text-[9px] px-1 rounded font-bold shadow animate-pulse">+200%</span>`;
+                    }
+
+                    slot.className = "shell-slot loading flex flex-col items-center justify-center p-2 rounded-lg border h-20 text-amber-400 font-teko relative";
+                    slot.innerHTML = `
+                        ${penaltyBadgeHtml}
+                        <div class="mb-1 opacity-90">${createShellSvg("fill-amber-400 animate-pulse")}</div>
+                        <span class="text-xs font-sans font-bold relative z-10">${(state.currentRequiredReload - state.activeReloadTimer).toFixed(1)}s</span>
+                    `;
+                } else {
+                    // Empty Shell
+                    slot.className = "shell-slot empty flex flex-col items-center justify-center p-2 rounded-lg border h-20 text-gray-600 font-teko relative";
+                    slot.innerHTML = `
+                        <div class="mb-1 opacity-20">${createShellSvg("fill-gray-500")}</div>
+                        <span class="text-xs font-sans opacity-40">#${i}</span>
+                    `;
+                }
+            }
+
+            // Shell Counter Text
+            document.getElementById('shellCountText').innerText = `${state.readyShells} / ${MAX_SHELLS} READY`;
+
+            // 2. Fire Button & State Locking Reasons
+            const fireBtn = document.getElementById('fireBtn');
+            const fireReason = document.getElementById('fireBlockedReason');
+
+            if (state.isLockedOut) {
+                fireBtn.disabled = true;
+                fireReason.innerText = `[RECOVERY LOCKOUT: ${state.lockoutTimer.toFixed(1)}s]`;
+            } else if (state.readyShells <= 0) {
+                fireBtn.disabled = true;
+                fireReason.innerText = "[NO AMMO IN READY RACK]";
+            } else if (state.intraClipTimer > 0) {
+                fireBtn.disabled = true;
+                fireReason.innerText = `[INTRA-CLIP COOLDOWN: ${state.intraClipTimer.toFixed(1)}s]`;
+            } else {
+                fireBtn.disabled = false;
+                fireReason.innerText = "READY TO FIRE";
+                fireReason.className = "text-xs font-bold text-emerald-400 h-4";
+            }
+
+            if (fireBtn.disabled && !state.isLockedOut && state.readyShells > 0) {
+                fireReason.className = "text-xs font-bold text-yellow-400 h-4";
+            } else if (fireBtn.disabled) {
+                fireReason.className = "text-xs font-bold text-red-400 h-4";
+            }
+
+            // 3. Intra-Clip Cooldown Bar
+            const intraClipPct = Math.min(100, (state.intraClipTimer / INTRA_CLIP_DELAY) * 100);
+            document.getElementById('intraClipBar').style.width = `${intraClipPct}%`;
+            document.getElementById('intraClipTime').innerText = `${state.intraClipTimer.toFixed(2)}s`;
+
+            // 4. Active Shell Reload Bar
+            const activeReloadPct = state.readyShells >= MAX_SHELLS || state.isLockedOut 
+                ? 0 
+                : Math.min(100, (state.activeReloadTimer / state.currentRequiredReload) * 100);
+            
+            document.getElementById('activeReloadBar').style.width = `${activeReloadPct}%`;
+            document.getElementById('loadingShellIndex').innerText = state.readyShells < MAX_SHELLS ? `#${state.readyShells + 1}` : 'MAX';
+            document.getElementById('activeReloadTime').innerText = state.readyShells >= MAX_SHELLS 
+                ? "FULL" 
+                : `${state.activeReloadTimer.toFixed(2)}s / ${state.currentRequiredReload.toFixed(2)}s`;
+
+            // 5. Dedicated Penalty Status Indicator
+            const penaltyBadge = document.getElementById('penaltyStatusBadge');
+            if (penaltyBadge) {
+                if (state.isLockedOut || state.readyShells >= MAX_SHELLS) {
+                    if (state.carryOverPenalty) {
+                        penaltyBadge.className = "px-2.5 py-1 rounded text-xs font-bold bg-amber-500/25 text-amber-300 border border-amber-500/60 font-sans";
+                        penaltyBadge.innerHTML = `<i class="fa-solid fa-right-long mr-1.5"></i> CARRYOVER PENDING (+100% on next reload)`;
+                    } else {
+                        penaltyBadge.className = "px-2.5 py-1 rounded text-xs font-bold bg-gray-800 text-gray-400 border border-gray-700 font-sans";
+                        penaltyBadge.innerHTML = `<i class="fa-solid fa-minus mr-1.5"></i> NONE (${state.isLockedOut ? 'RECOVERY LOCKOUT' : 'FULL RACK'})`;
+                    }
+                } else if (state.currentShellPenaltiesCount === 0) {
+                    penaltyBadge.className = "px-2.5 py-1 rounded text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-sans";
+                    penaltyBadge.innerHTML = `<i class="fa-solid fa-circle-check mr-1.5"></i> NO PENALTY (0% &rarr; 8.00s)`;
+                } else if (state.currentShellPenaltiesCount === 1) {
+                    penaltyBadge.className = "px-2.5 py-1 rounded text-xs font-bold bg-amber-500/25 text-amber-300 border border-amber-500/60 shadow-md font-sans";
+                    penaltyBadge.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1.5"></i> PENALTY 1/3: +25% (+2.00s &rarr; 10.00s)`;
+                } else if (state.currentShellPenaltiesCount === 2) {
+                    penaltyBadge.className = "px-2.5 py-1 rounded text-xs font-bold bg-orange-500/30 text-orange-300 border border-orange-500/60 shadow-md font-sans";
+                    penaltyBadge.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-1.5"></i> PENALTY 2/3: +100% (+8.00s &rarr; 16.00s)`;
+                } else {
+                    penaltyBadge.className = "px-2.5 py-1 rounded text-xs font-bold bg-red-500/30 text-red-300 border border-red-500/70 shadow-lg animate-pulse font-sans";
+                    penaltyBadge.innerHTML = `<i class="fa-solid fa-skull-crossbones mr-1.5"></i> MAX PENALTY 3/3: +200% (+16.00s &rarr; 24.00s) + CARRYOVER`;
+                }
+            }
+
+            // 6. Lockout Display
+            const lockoutContainer = document.getElementById('lockoutContainer');
+            if (state.isLockedOut) {
+                lockoutContainer.classList.remove('hidden');
+                document.getElementById('lockoutTime').innerText = `${state.lockoutTimer.toFixed(1)}s`;
+                const lockoutPct = (state.lockoutTimer / LOCKOUT_TIME) * 100;
+                document.getElementById('lockoutBar').style.width = `${lockoutPct}%`;
+            } else {
+                lockoutContainer.classList.add('hidden');
+            }
+
+            // 7. Telemetry Stats
+            document.getElementById('battleTime').innerText = formatTime(state.battleTime);
+            document.getElementById('totalShots').innerText = state.totalShots;
+            document.getElementById('totalDamage').innerText = state.totalDamage;
+            
+            // Calculate DPM (Damage / Minutes)
+            const minutesPassed = state.battleTime / 60;
+            const currentDPM = minutesPassed > 0 ? Math.round(state.totalDamage / minutesPassed) : 0;
+            document.getElementById('currentDPM').innerText = currentDPM;
+
+            document.getElementById('shotsWhileReloading').innerText = state.shotsWhileReloadingCount;
+            document.getElementById('totalPenaltyTime').innerText = `${state.totalPenaltyTimeAdded.toFixed(2)} s`;
+        }
+
+        // --- HELPER LOGGING FUNCTIONS ---
+        function addLog(text, type = "info") {
+            const logContainer = document.getElementById('combatLog');
+            const entry = document.createElement('div');
+            const timeStr = formatTime(state.battleTime);
+            
+            let colorClass = "text-gray-300";
+            let prefix = "•";
+
+            if (type === "shot") {
+                colorClass = "text-orange-400 font-bold";
+                prefix = "💥";
+            } else if (type === "reload") {
+                colorClass = "text-sky-400";
+                prefix = "⚡";
+            } else if (type === "lock") {
+                colorClass = "text-red-400 font-bold";
+                prefix = "🔒";
+            } else if (type === "success") {
+                colorClass = "text-emerald-400 font-bold";
+                prefix = "🔓";
+            }
+
+            entry.className = `${colorClass} flex gap-2 items-start`;
+            entry.innerHTML = `<span class="text-gray-500 font-mono text-[10px]">[${timeStr}]</span> <span>${prefix} ${text}</span>`;
+            
+            logContainer.insertBefore(entry, logContainer.firstChild);
+        }
+
+        function clearLogs() {
+            document.getElementById('combatLog').innerHTML = '';
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = (seconds % 60).toFixed(1);
+            return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        function resetSimulator() {
+            state.readyShells = 0;
+            state.activeReloadTimer = 0;
+            state.currentRequiredReload = BASE_RELOAD_TIME;
+            state.intraClipTimer = 0;
+            state.isLockedOut = true;
+            state.lockoutTimer = LOCKOUT_TIME;
+            state.currentShellPenaltiesCount = 0;
+            state.carryOverPenalty = false;
+            
+            state.battleTime = 0;
+            state.totalShots = 0;
+            state.totalDamage = 0;
+            state.shotsWhileReloadingCount = 0;
+            state.totalPenaltyTimeAdded = 0;
+
+            clearLogs();
+            addLog("Simulator reset. Ready rack recovery lockout active (24.0s).", "lock");
+        }
+    </script>
+</body>
+</html>
